@@ -1,25 +1,35 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 
 import { notFoundHandler } from './middlewares/notFoundHandler.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 import router from './routers/index.js';
 
+// import { swaggerDocs } from './middlewares/swaggerDocs.js';
+
 export const createApp = () => {
   const app = express();
 
-  app.use(express.json());
+  // безопасность
+  app.use(helmet());
 
-  app.use(cors());
+  app.use(
+    cors({
+      origin: 'http://localhost:3000',
+      credentials: true, // разрешение передавать куки
+    }),
+  );
+
+  app.use(express.json());
 
   app.use(cookieParser());
 
+  // app.use('/api-docs', swaggerDocs());
+
+  // Routes
   app.get('/', (req, res) => res.json({ message: 'Hello world!' }));
-  app.get('/test', (req, res) => {
-    console.log('GET /test hit');
-    res.json({ ok: true });
-  });
 
   app.use(router);
 

@@ -1,9 +1,16 @@
-export const errorHandler = (err, req, res, next) => {
-  const { status = 500, message = 'Something went wrong' } = err;
+import { HttpError } from 'http-errors';
 
+export const errorHandler = async (err, req, res, _next) => {
+  if (err instanceof HttpError) {
+    res
+      .status(err.status)
+      .json({ status: err.status, message: err.name, data: err });
+
+    return;
+  }
+  const { status = 500, message = 'Server error' } = err;
   res.status(status).json({
-    status: status,
-    message: message,
-    data: err.data || {},
+    status,
+    message,
   });
 };

@@ -30,7 +30,7 @@ export const deleteSessionById = async (id) => {
   });
 };
 
-export const deleteSessionsByUserId = async (userId) => {
+export const deleteSessionsByAuthId = async (userId) => {
   return prisma.session.deleteMany({
     where: { userId },
   });
