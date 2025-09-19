@@ -8,10 +8,15 @@ dotenv.config();
 const prisma = new PrismaClient();
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
 const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET is not defined in .env');
+}
 
 // ===================== REGISTER =====================
-export const register = async (req, res) => {
+export const registerUserController = async (req, res) => {
   try {
+    console.log('Body:', req.body);
+
     const { name, email, password } = req.body;
 
     // Валидация
@@ -22,7 +27,14 @@ export const register = async (req, res) => {
     }
 
     // Проверка существующего пользователя
-    const existingUser = await prisma.user.findUnique({ where: { email } });
+    let existingUser;
+    try {
+      existingUser = await prisma.user.findUnique({ where: { email } });
+    } catch (err) {
+      console.error('Prisma findUnique error:', err); // <- здесь лог ошибки Prisma
+      throw err;
+    }
+
     if (existingUser) {
       return res.status(409).json({ message: 'User already exists' });
     }
@@ -32,13 +44,19 @@ export const register = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, salt);
 
     // Создаем пользователя
-    const user = await prisma.user.create({
-      data: {
-        name,
-        email,
-        password: hashedPassword,
-      },
-    });
+    let user;
+    try {
+      user = await prisma.user.create({
+        data: {
+          name,
+          email,
+          password: hashedPassword,
+        },
+      });
+    } catch (err) {
+      console.error('Prisma create error:', err);
+      throw err;
+    }
 
     // Генерация JWT
     const token = jwt.sign({ id: user.id }, JWT_SECRET, {
@@ -61,7 +79,7 @@ export const register = async (req, res) => {
 };
 
 // ===================== LOGIN =====================
-export const login = async (req, res) => {
+export const loginUserController = async (req, res) => {
   try {
     const { email, password } = req.body;
 
