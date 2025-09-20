@@ -1,16 +1,9 @@
 import { HttpError } from 'http-errors';
 
-export const errorHandler = async (err, req, res, _next) => {
-  if (err instanceof HttpError) {
-    res
-      .status(err.status)
-      .json({ status: err.status, message: err.name, data: err });
-
-    return;
-  }
-  const { status = 500, message = 'Server error' } = err;
-  res.status(status).json({
-    status,
-    message,
-  });
+export const errorHandler = (err, req, res, next) => {
+  console.error('ERROR MESSAGE:', err.message);
+  console.error('STACK TRACE:', err.stack);
+  res
+    .status(err.status || 500)
+    .json({ message: err.message || 'Server error' });
 };

@@ -15,10 +15,6 @@ dotenv.config();
 // Регистрация
 export const registerAuthController = async (req, res) => {
   try {
-    const { error } = registerSchema.validate(req.body);
-    if (error)
-      return res.status(400).json({ message: error.details[0].message });
-
     const { name, email, password } = req.body;
 
     const existingUser = await prisma.user.findUnique({ where: { email } });
@@ -52,7 +48,7 @@ export const registerAuthController = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error(err);
+    console.error('REGISTER ERROR:', err.stack);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -60,10 +56,6 @@ export const registerAuthController = async (req, res) => {
 // Логин
 export const loginAuthController = async (req, res) => {
   try {
-    const { error } = loginSchema.validate(req.body);
-    if (error)
-      return res.status(400).json({ message: error.details[0].message });
-
     const { email, password } = req.body;
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) return res.status(400).json({ message: 'Invalid credentials' });
@@ -85,6 +77,7 @@ export const loginAuthController = async (req, res) => {
 
     res.json({
       accessToken,
+      refreshToken,
       user: {
         id: user.id,
         name: user.name,
@@ -101,7 +94,7 @@ export const loginAuthController = async (req, res) => {
 // Логаут
 export const logoutAuthController = async (req, res) => {
   try {
-    const sessionId = req.cookies.sessionId;
+    const sessionId = Number(req.cookies.sessionId);
     if (sessionId) {
       await prisma.user.update({
         where: { id: sessionId },
@@ -120,7 +113,8 @@ export const logoutAuthController = async (req, res) => {
 // Обновление сессии
 export const refreshSessionAuthController = async (req, res) => {
   try {
-    const { sessionId, refreshToken } = req.cookies;
+    const sessionId = Number(req.cookies.sessionId);
+    const { refreshToken } = req.cookies;
     if (!sessionId || !refreshToken) throw new Error('No session');
 
     const user = await prisma.user.findUnique({ where: { id: sessionId } });
@@ -202,10 +196,6 @@ export const requestResetEmailAuthController = async (req, res) => {
 
 export const resetPasswordAuthController = async (req, res) => {
   try {
-    const { error } = resetPasswordSchema.validate(req.body);
-    if (error)
-      return res.status(400).json({ message: error.details[0].message });
-
     const { token, newPassword } = req.body;
 
     const user = await prisma.user.findFirst({ where: { resetToken: token } });
