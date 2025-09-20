@@ -160,7 +160,7 @@ curl -X POST http://localhost:3000/auth/logout \
 Response 204:
 
 ```json
-No content. Session is deleted.
+"No content. Session is deleted."
 ```
 
 ### 5. Request Password Reset
@@ -269,4 +269,4 @@ Cookies are used for session management in refresh and logout endpoints.
 
 Without Docker, the backend runs on any machine with Node.js and PostgreSQL installed.
 
-## You can test endpoints with curl or Postman.
+You can test endpoints with curl or Postman.
