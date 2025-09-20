@@ -2,7 +2,11 @@
 
 This is the backend for the VideoPlayer project. It provides authentication, session management, password reset, and email confirmation endpoints.
 
+---
+
 ## Setup
+
+---
 
 1. Clone the repository and install dependencies:
 
@@ -39,12 +43,13 @@ API Endpoints
 
 Request Body (JSON):
 
-````json
+```json
 {
   "name": "TestUser",
   "email": "testuser@example.com",
   "password": "12345678"
 }
+```
 
 Example curl:
 
@@ -52,7 +57,7 @@ Example curl:
 curl -X POST http://localhost:3000/auth/register \
 -H "Content-Type: application/json" \
 -d "{\"name\":\"TestUser\",\"email\":\"testuser@example.com\",\"password\":\"12345678\"}"
-````
+```
 
 Response 201:
 
