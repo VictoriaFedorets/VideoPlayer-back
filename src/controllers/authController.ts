@@ -29,6 +29,7 @@ export const registerAuthController = async (
     const { name, email, password } = req.body;
 
     const existingUser = await prisma.user.findUnique({ where: { email } });
+
     if (existingUser) {
       res.status(409).json({ message: 'User already exists' });
       return;

@@ -1,6 +1,7 @@
+import { Request, Response, NextFunction } from 'express';
 import createHttpError from 'http-errors';
-import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
+import jwt, { JwtPayload } from 'jsonwebtoken';
+import { PrismaClient, User } from '@prisma/client';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -11,7 +12,23 @@ if (!JWT_SECRET) {
   throw new Error('JWT_SECRET is not defined in .env');
 }
 
-export const authenticate = async (req, res, next) => {
+declare global {
+  namespace Express {
+    interface Request {
+      user?: User;
+    }
+  }
+}
+
+interface TokenPayload extends JwtPayload {
+  id: number;
+}
+
+export const authenticate = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
   try {
     const authHeader = req.get('Authorization');
     if (!authHeader) {
@@ -25,21 +42,19 @@ export const authenticate = async (req, res, next) => {
       );
     }
 
-    // Проверяем JWT
-    let payload;
+    let payload: TokenPayload;
     try {
-      payload = jwt.verify(token, JWT_SECRET);
+      payload = jwt.verify(token, JWT_SECRET) as TokenPayload;
     } catch (err) {
       return next(createHttpError(401, 'Invalid or expired token'));
     }
 
-    // Ищем пользователя по id из JWT
     const user = await prisma.user.findUnique({ where: { id: payload.id } });
     if (!user) {
       return next(createHttpError(401, 'User not found'));
     }
 
-    req.user = user; // добавляем пользователя в req
+    req.user = user;
     next();
   } catch (err) {
     next(err);
