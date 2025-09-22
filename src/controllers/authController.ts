@@ -1,30 +1,43 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
-import { generateAccessToken } from '../utils/tokens.js';
-import { setupSession } from '../utils/setupSession.js';
-import {
-  prisma,
-  ONE_DAY,
-  JWT_EXPIRES_IN,
-  JWT_SECRET,
-} from '../config/constants.js';
+import type { Request, Response } from 'express';
+import { generateAccessToken } from '../utils/tokens.ts';
+import { setupSession } from '../utils/setupSession.ts';
+import { prisma, ONE_DAY } from '../config/constants.ts';
+import type {
+  RegisterAuthDTO,
+  LoginAuthDTO,
+  ConfirmEmailAuthDTO,
+  RequestResetEmailAuthDTO,
+  ResetPasswordAuthDTO,
+} from '../validation/auth.ts';
 
 dotenv.config();
 
+interface SessionCookies {
+  sessionId?: string;
+  refreshToken?: string;
+}
+
 // Регистрация
-export const registerAuthController = async (req, res) => {
+export const registerAuthController = async (
+  req: Request<{}, {}, RegisterAuthDTO>,
+  res: Response,
+): Promise<void> => {
   try {
     const { name, email, password } = req.body;
 
     const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser)
-      return res.status(409).json({ message: 'User already exists' });
+    if (existingUser) {
+      res.status(409).json({ message: 'User already exists' });
+      return;
+    }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await prisma.user.create({
-      data: { name, email, password: hashedPassword },
+      data: { name: name || 'User', email, password: hashedPassword },
     });
 
     const accessToken = generateAccessToken(user.id);
@@ -48,21 +61,29 @@ export const registerAuthController = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('REGISTER ERROR:', err.stack);
+    console.error('REGISTER ERROR:', (err as Error).stack);
     res.status(500).json({ message: 'Server error' });
   }
 };
 
 // Логин
-export const loginAuthController = async (req, res) => {
+export const loginAuthController = async (
+  req: Request<{}, {}, LoginAuthDTO>,
+  res: Response,
+): Promise<void> => {
   try {
     const { email, password } = req.body;
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return res.status(400).json({ message: 'Invalid credentials' });
+    if (!user) {
+      res.status(400).json({ message: 'Invalid credentials' });
+      return;
+    }
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch)
-      return res.status(400).json({ message: 'Invalid credentials' });
+    if (!isMatch) {
+      res.status(400).json({ message: 'Invalid credentials' });
+      return;
+    }
 
     const accessToken = generateAccessToken(user.id);
     const refreshToken = crypto.randomBytes(40).toString('hex');
@@ -92,7 +113,10 @@ export const loginAuthController = async (req, res) => {
 };
 
 // Логаут
-export const logoutAuthController = async (req, res) => {
+export const logoutAuthController = async (
+  req: Request<{}, {}, LoginAuthDTO>,
+  res: Response,
+): Promise<void> => {
   try {
     const sessionId = Number(req.cookies.sessionId);
     if (sessionId) {
@@ -111,7 +135,10 @@ export const logoutAuthController = async (req, res) => {
 };
 
 // Обновление сессии
-export const refreshSessionAuthController = async (req, res) => {
+export const refreshSessionAuthController = async (
+  req: Request<{}, {}, {}, SessionCookies>,
+  res: Response,
+): Promise<void> => {
   try {
     const sessionId = Number(req.cookies.sessionId);
     const { refreshToken } = req.cookies;
@@ -121,9 +148,11 @@ export const refreshSessionAuthController = async (req, res) => {
     if (
       !user ||
       user.refreshToken !== refreshToken ||
+      !user.refreshTokenValidUntil ||
       user.refreshTokenValidUntil < new Date()
     ) {
-      return res.status(401).json({ message: 'Invalid session' });
+      res.status(401).json({ message: 'Invalid session' });
+      return;
     }
 
     const newAccessToken = generateAccessToken(user.id);
@@ -144,22 +173,38 @@ export const refreshSessionAuthController = async (req, res) => {
     res.json({ accessToken: newAccessToken });
   } catch (err) {
     console.error(err);
-    res.status(401).json({ message: err.message });
+    res.status(401).json({ message: (err as Error).message });
   }
 };
 
 // Подтверждение email
-export const confirmEmailAuthController = async (req, res) => {
+export const confirmEmailAuthController = async (
+  req: Request<{}, {}, ConfirmEmailAuthDTO>,
+  res: Response,
+): Promise<void> => {
   try {
     const { token } = req.body;
+
+    if (!token) {
+      res.status(400).json({ message: 'Token is required' });
+      return;
+    }
+
     const user = await prisma.user.findFirst({
-      where: { emailConfirmationToken: token },
+      where: { emailConfirmationToken: { equals: token } },
     });
-    if (!user) return res.status(400).json({ message: 'Invalid token' });
+
+    if (!user) {
+      res.status(400).json({ message: 'Invalid token' });
+      return;
+    }
 
     await prisma.user.update({
       where: { id: user.id },
-      data: { emailConfirmed: true, emailConfirmationToken: null },
+      data: {
+        emailConfirmed: true,
+        emailConfirmationToken: null,
+      },
     });
 
     res.json({ message: 'Email confirmed' });
@@ -170,11 +215,17 @@ export const confirmEmailAuthController = async (req, res) => {
 };
 
 // Сброс пароля
-export const requestResetEmailAuthController = async (req, res) => {
+export const requestResetEmailAuthController = async (
+  req: Request<{}, {}, RequestResetEmailAuthDTO>,
+  res: Response,
+): Promise<void> => {
   try {
     const { email } = req.body;
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (!user) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
 
     const resetToken = crypto.randomBytes(20).toString('hex');
     const resetTokenValidUntil = new Date(Date.now() + 3600 * 1000); // 1 час
@@ -194,15 +245,23 @@ export const requestResetEmailAuthController = async (req, res) => {
   }
 };
 
-export const resetPasswordAuthController = async (req, res) => {
+export const resetPasswordAuthController = async (
+  req: Request<{}, {}, ResetPasswordAuthDTO>,
+  res: Response,
+): Promise<void> => {
   try {
     const { token, newPassword } = req.body;
 
-    const user = await prisma.user.findFirst({ where: { resetToken: token } });
-    if (!user || user.resetTokenValidUntil < new Date()) {
-      return res
-        .status(400)
-        .json({ message: 'Invalid or expired reset token' });
+    const user = await prisma.user.findFirst({
+      where: { resetToken: token },
+    });
+    if (
+      !user ||
+      !user.resetTokenValidUntil ||
+      user.resetTokenValidUntil < new Date()
+    ) {
+      res.status(400).json({ message: 'Invalid or expired reset token' });
+      return;
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);

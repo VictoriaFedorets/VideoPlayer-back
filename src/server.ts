@@ -3,11 +3,12 @@ import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 
-import { notFoundHandler } from './middlewares/notFoundHandler.js';
-import { errorHandler } from './middlewares/errorHandler.js';
-import router from './routers/index.js';
+import { notFoundHandler } from './middlewares/notFoundHandler.ts';
+import { errorHandler } from './middlewares/errorHandler.ts';
+import { logger } from './middlewares/logger.ts';
+import router from './routers/index.ts';
 
-// import { swaggerDocs } from './middlewares/swaggerDocs.js';
+// import { swaggerDocs } from './middlewares/swaggerDocs.ts';
 
 export const createApp = () => {
   const app = express();
@@ -26,10 +27,14 @@ export const createApp = () => {
 
   app.use(cookieParser());
 
+  app.use(logger);
+
   // app.use('/api-docs', swaggerDocs());
 
   // Routes
-  app.get('/', (req, res) => res.json({ message: 'Hello world!' }));
+  // app.get('/', (req: Request, res: Response) =>
+  //   res.json({ message: 'Hello world!' }),
+  // );
 
   app.use(router);
 

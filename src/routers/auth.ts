@@ -1,12 +1,12 @@
 import { Router } from 'express';
-import ctrlWrapper from '../utils/ctrlWrapper.js';
+import ctrlWrapper from '../utils/ctrlWrapper.ts';
 import {
   loginAuthSchema,
   registerAuthSchema,
   confirmEmailAuthSchema,
   requestResetEmailAuthSchema,
   resetPasswordAuthSchema,
-} from '../validation/auth.js';
+} from '../validation/auth.ts';
 import {
   confirmEmailAuthController,
   loginAuthController,
@@ -15,8 +15,8 @@ import {
   requestResetEmailAuthController,
   resetPasswordAuthController,
   refreshSessionAuthController,
-} from '../controllers/authController.js';
-import { validateBody } from '../middlewares/validateBody.js';
+} from '../controllers/authController.ts';
+import { validateBody } from '../middlewares/validateBody.ts';
 
 const authRouter = Router();
 
@@ -56,5 +56,8 @@ authRouter.post(
   validateBody(resetPasswordAuthSchema),
   ctrlWrapper(resetPasswordAuthController),
 );
+
+// авторизованным пользователям
+// router.get('/profile', authenticate, getProfileController);
 
 export default authRouter;

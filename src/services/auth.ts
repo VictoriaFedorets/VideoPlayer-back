@@ -2,26 +2,37 @@ import createHttpError from 'http-errors';
 import { randomBytes } from 'crypto';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import type { JwtPayload } from 'jsonwebtoken';
 import handlebars from 'handlebars';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 
-import { prisma } from '../config/prisma.js'; // prisma client
+import { prisma } from '../db/initPrismaConnection.ts';
 import {
   accessTokenLifetime,
   refreshTokenLifetime,
-} from '../constants/users.js';
-import { SMTP, TEMPLATES_DIR } from '../constants/index.js';
-import { env } from '../utils/env.js';
-import { sendEmail } from '../utils/sendMail.js';
-import {
-  getUsernameFromGoogleTokenPayload,
-  validateCode,
-} from '../utils/googleOAuth2.js';
-import { generateActivationToken } from '../utils/generateActivationToken.js';
+} from '../config/constants.ts';
+import { SMTP, TEMPLATES_DIR } from '../config/constants.ts';
+import { env } from '../utils/env.ts';
+import { sendEmail } from '../utils/sendMail.ts';
+import { generateActivationToken } from '../utils/generateActivationToken.ts';
+import type {
+  RegisterAuthDTO,
+  LoginAuthDTO,
+  ConfirmEmailAuthDTO,
+  RequestResetEmailAuthDTO,
+  ResetPasswordAuthDTO,
+} from '../validation/auth.ts';
+
+interface SessionData {
+  accessToken: string;
+  refreshToken: string;
+  accessTokenValidUntil: Date;
+  refreshTokenValidUntil: Date;
+}
 
 /* ================= CREATE SESSION ================= */
-const createSession = () => {
+const createSession = (): SessionData => {
   const accessToken = randomBytes(30).toString('base64');
   const refreshToken = randomBytes(30).toString('base64');
 
@@ -34,7 +45,7 @@ const createSession = () => {
 };
 
 /* ================= REGISTER ================= */
-export const register = async (payload) => {
+export const register = async (payload: RegisterAuthDTO): Promise<void> => {
   const { email, password } = payload;
 
   const user = await prisma.user.findUnique({ where: { email } });
@@ -46,9 +57,14 @@ export const register = async (payload) => {
   }
 
   const hashPassword = await bcrypt.hash(password, 10);
-
+  const name = payload.name?.trim() ?? 'User';
   const newUser = await prisma.user.create({
-    data: { ...payload, password: hashPassword, isActive: false },
+    data: {
+      ...payload,
+      name,
+      password: hashPassword,
+      isActive: false,
+    },
   });
 
   const activateToken = generateActivationToken(newUser.id, newUser.email);
@@ -73,19 +89,27 @@ export const register = async (payload) => {
       subject: 'Confirm your email',
       html,
     });
-  } catch (error) {
-    throw createHttpError(500, error.message || 'Email sending failed');
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw createHttpError(500, message || 'Email sending failed');
   }
 };
 
 /* ================= CONFIRM EMAIL ================= */
-export const confirmEmail = async ({ token }) => {
+export const confirmEmail = async ({
+  token,
+}: ConfirmEmailAuthDTO): Promise<SessionData> => {
   if (!token) throw createHttpError(400, 'Activation token required');
 
   try {
-    const decoded = jwt.verify(token, env('JWT_SECRET'));
+    const decoded = jwt.verify(token, env('JWT_SECRET')) as {
+      sub: string;
+      email: string;
+    };
 
-    const user = await prisma.user.findUnique({ where: { id: decoded.sub } });
+    const user = await prisma.user.findUnique({
+      where: { id: Number(decoded.sub) },
+    });
     if (!user) throw createHttpError(404, 'User not found');
     if (user.isActive) throw createHttpError(400, 'Account already activated');
 
@@ -107,7 +131,9 @@ export const confirmEmail = async ({ token }) => {
 };
 
 /* ================= LOGIN ================= */
-export const login = async ({ email, password }) => {
+export const login = async (payload: LoginAuthDTO): Promise<SessionData> => {
+  const { email, password } = payload;
+
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) throw createHttpError(401, 'Email or password invalid');
 
@@ -128,7 +154,13 @@ export const login = async ({ email, password }) => {
 };
 
 /* ================= REFRESH SESSION ================= */
-export const refreshUserSession = async ({ sessionId, refreshToken }) => {
+export const refreshUserSession = async ({
+  sessionId,
+  refreshToken,
+}: {
+  sessionId: number;
+  refreshToken: string;
+}): Promise<SessionData> => {
   const session = await prisma.session.findFirst({
     where: { id: sessionId, refreshToken },
   });
@@ -148,16 +180,13 @@ export const refreshUserSession = async ({ sessionId, refreshToken }) => {
 };
 
 /* ================= LOGOUT ================= */
-export const logout = (sessionId) =>
+export const logout = (sessionId: number) =>
   prisma.session.delete({ where: { id: sessionId } });
 
-/* ================= FIND HELPERS ================= */
-export const findSession = (filter) =>
-  prisma.session.findFirst({ where: filter });
-export const findUser = (filter) => prisma.user.findFirst({ where: filter });
-
 /* ================= RESET PASSWORD ================= */
-export const requestResetToken = async (email) => {
+export const requestResetToken = async ({
+  email,
+}: RequestResetEmailAuthDTO): Promise<void> => {
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) throw createHttpError(404, 'User not found');
 
@@ -187,20 +216,28 @@ export const requestResetToken = async (email) => {
   });
 };
 
-export const resetPassword = async ({ token, password }) => {
-  let entries;
+export const resetPassword = async ({
+  token,
+  newPassword,
+}: ResetPasswordAuthDTO): Promise<void> => {
+  let decoded: JwtPayload & { sub: number; email: string };
+
   try {
-    entries = jwt.verify(token, env('JWT_SECRET'));
+    const decodedRaw = jwt.verify(token, env('JWT_SECRET'));
+    if (typeof decodedRaw === 'string') {
+      throw createHttpError(401, 'Token invalid');
+    }
+    decoded = decodedRaw as JwtPayload & { sub: number; email: string };
   } catch {
     throw createHttpError(401, 'Token is expired or invalid.');
   }
 
   const user = await prisma.user.findUnique({
-    where: { id: entries.sub, email: entries.email },
+    where: { id: decoded.sub, email: decoded.email },
   });
   if (!user) throw createHttpError(404, 'User not found');
 
-  const encryptedPassword = await bcrypt.hash(password, 10);
+  const encryptedPassword = await bcrypt.hash(newPassword, 10);
 
   await prisma.user.update({
     where: { id: user.id },

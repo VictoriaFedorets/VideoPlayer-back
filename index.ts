@@ -1,11 +1,11 @@
 import dotenv from 'dotenv';
-import { createApp } from './src/server.js';
-import { initPrismaConnection } from './src/db/initPrismaConnection.js';
-import { env } from './src/utils/env.js';
+import { createApp } from './src/server.ts';
+import { initPrismaConnection } from './src/db/initPrismaConnection.ts';
+import { env } from './src/utils/env.ts';
 
 dotenv.config();
 
-const bootstrap = async () => {
+const bootstrap = async (): Promise<void> => {
   try {
     await initPrismaConnection();
 
