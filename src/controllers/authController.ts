@@ -134,6 +134,58 @@ export const logoutAuthController = async (
     res.status(500).json({ message: 'Server error' });
   }
 };
+// Обновление токенов (refresh)
+export const refreshAuthController = async (
+  req: Request<{}, {}, { refreshToken: string }>,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      res.status(400).json({ message: 'Refresh token is required' });
+      return;
+    }
+
+    const user = await prisma.user.findFirst({
+      where: { refreshToken },
+    });
+
+    if (
+      !user ||
+      !user.refreshTokenValidUntil ||
+      user.refreshTokenValidUntil < new Date()
+    ) {
+      res.status(401).json({ message: 'Invalid or expired refresh token' });
+      return;
+    }
+
+    // создаём новые токены
+    const newAccessToken = generateAccessToken(user.id);
+    const newRefreshToken = crypto.randomBytes(40).toString('hex');
+    const refreshTokenValidUntil = new Date(Date.now() + ONE_DAY);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { refreshToken: newRefreshToken, refreshTokenValidUntil },
+    });
+
+    // возвращаем новые токены
+    res.json({
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        createdAt: user.createdAt,
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
 
 // Обновление сессии
 export const refreshSessionAuthController = async (

@@ -120,7 +120,7 @@ Errors:
 
 ### 3. Refresh Session
 
-**POST** `/auth/refresh`
+**POST** `/auth/refresh-session`
 
 Headers:
 Content-Type: application/json
@@ -263,6 +263,41 @@ Response 200:
 Errors:
 
 - 400 — Invalid token
+- 500 — Server error
+
+### 8. Refresh Token
+
+**POST** `/auth/refresh`
+
+Request Body (JSON):
+
+```json
+{
+  "Cookie: refreshToken=<REFRESH_TOKEN>"
+}
+```
+
+Example curl:
+
+```bash
+curl -X POST http://localhost:3000/auth/refresh \
+  -H "Content-Type: application/json" \
+  --cookie "refreshToken=<REFRESH_TOKEN>"
+```
+
+Response 200:
+
+```json
+{
+  "accessToken": "new.jwt.token",
+  "refreshToken": "new-refresh-token"
+}
+```
+
+Errors:
+
+- 400 — Invalid refresh token
+- 401 — Refresh token expired
 - 500 — Server error
 
 ---

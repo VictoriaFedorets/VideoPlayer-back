@@ -15,6 +15,7 @@ import {
   requestResetEmailAuthController,
   resetPasswordAuthController,
   refreshSessionAuthController,
+  refreshAuthController,
 } from '../controllers/authController.ts';
 import { validateBody } from '../middlewares/validateBody.ts';
 
@@ -41,7 +42,9 @@ authRouter.post(
 authRouter.post('/logout', ctrlWrapper(logoutAuthController));
 
 // обновление сессии
-authRouter.post('/refresh', ctrlWrapper(refreshSessionAuthController));
+authRouter.post('/refresh-session', ctrlWrapper(refreshSessionAuthController));
+
+authRouter.post('/refresh', ctrlWrapper(refreshAuthController));
 
 // запрос сброса пароля(отправка письма)
 authRouter.post(
