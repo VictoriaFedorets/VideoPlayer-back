@@ -1,6 +1,6 @@
 import createHttpError from 'http-errors';
 import { randomBytes } from 'crypto';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import type { JwtPayload } from 'jsonwebtoken';
 import handlebars from 'handlebars';
@@ -12,7 +12,8 @@ import {
   accessTokenLifetime,
   refreshTokenLifetime,
 } from '../config/constants.ts';
-import { SMTP, TEMPLATES_DIR } from '../config/constants.ts';
+import { generateAccessToken } from '../utils/tokens.ts';
+import { SMTP, TEMPLATES_DIR, ONE_DAY } from '../config/constants.ts';
 import { env } from '../utils/env.ts';
 import { sendEmail } from '../utils/sendMail.ts';
 import { generateActivationToken } from '../utils/generateActivationToken.ts';
@@ -45,30 +46,41 @@ const createSession = (): SessionData => {
 };
 
 /* ================= REGISTER ================= */
-export const register = async (payload: RegisterAuthDTO): Promise<void> => {
-  const { email, password } = payload;
+export const register = async (
+  payload: RegisterAuthDTO,
+): Promise<{ accessToken: string; user: any }> => {
+  const { name, email, password } = payload;
 
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (user) {
-    throw createHttpError(
-      409,
-      'Email already in use. Please login or reset your password',
-    );
+  // Проверка существующего пользователя
+  const existingUser = await prisma.user.findUnique({ where: { email } });
+  if (existingUser) {
+    throw createHttpError(409, 'User already exists');
   }
 
-  const hashPassword = await bcrypt.hash(password, 10);
-  const name = payload.name?.trim() ?? 'User';
-  const newUser = await prisma.user.create({
+  // Хэшируем пароль
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  // Создаем нового пользователя
+  const user = await prisma.user.create({
     data: {
-      ...payload,
-      name,
-      password: hashPassword,
-      isActive: false,
+      name: name || 'User',
+      email,
+      password: hashedPassword,
+      emailConfirmed: false,
     },
   });
 
-  const activateToken = generateActivationToken(newUser.id, newUser.email);
+  // Генерация токенов
+  const accessToken = generateAccessToken(user.id);
+  const refreshToken = randomBytes(40).toString('hex');
+  const refreshTokenValidUntil = new Date(Date.now() + ONE_DAY);
 
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { refreshToken, refreshTokenValidUntil },
+  });
+
+  // Отправка письма с подтверждением (можно тоже вынести в отдельную утилиту)
   const confirmEmailTemplatePath = path.join(
     TEMPLATES_DIR,
     'confirm-email.html',
@@ -79,12 +91,14 @@ export const register = async (payload: RegisterAuthDTO): Promise<void> => {
   const template = handlebars.compile(templateSource);
 
   const html = template({
-    link: `${env('FRONTEND_DOMAIN')}/confirm-email?token=${activateToken}`,
+    link: `${env(
+      'FRONTEND_DOMAIN',
+    )}/confirm-email?token=${generateActivationToken(user.id, user.email)}`,
   });
 
   try {
     await sendEmail({
-      from: env(SMTP.SMTP_FROM),
+      from: `VideoPlayer <${env('SMTP_FROM')}>`,
       to: email,
       subject: 'Confirm your email',
       html,
@@ -93,6 +107,8 @@ export const register = async (payload: RegisterAuthDTO): Promise<void> => {
     const message = error instanceof Error ? error.message : String(error);
     throw createHttpError(500, message || 'Email sending failed');
   }
+
+  return { accessToken, user };
 };
 
 /* ================= CONFIRM EMAIL ================= */

@@ -12,6 +12,8 @@ import type {
   RequestResetEmailAuthDTO,
   ResetPasswordAuthDTO,
 } from '../validation/auth.ts';
+import path from 'path';
+import * as authService from '../services/auth.ts';
 
 dotenv.config();
 
@@ -26,44 +28,14 @@ export const registerAuthController = async (
   res: Response,
 ): Promise<void> => {
   try {
-    const { name, email, password } = req.body;
+    const { accessToken, user } = await authService.register(req.body);
 
-    const existingUser = await prisma.user.findUnique({ where: { email } });
-
-    if (existingUser) {
-      res.status(409).json({ message: 'User already exists' });
-      return;
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const user = await prisma.user.create({
-      data: { name: name || 'User', email, password: hashedPassword },
-    });
-
-    const accessToken = generateAccessToken(user.id);
-    const refreshToken = crypto.randomBytes(40).toString('hex');
-    const refreshTokenValidUntil = new Date(Date.now() + ONE_DAY);
-
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { refreshToken, refreshTokenValidUntil },
-    });
-
-    setupSession(res, { id: user.id, refreshToken, refreshTokenValidUntil });
-
-    res.status(201).json({
-      accessToken,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        createdAt: user.createdAt,
-      },
-    });
-  } catch (err) {
-    console.error('REGISTER ERROR:', (err as Error).stack);
-    res.status(500).json({ message: 'Server error' });
+    res.status(201).json({ accessToken, user });
+  } catch (err: any) {
+    console.error('REGISTER ERROR:', err.stack || err);
+    res
+      .status(err.status || 500)
+      .json({ message: err.message || 'Server error' });
   }
 };
 
