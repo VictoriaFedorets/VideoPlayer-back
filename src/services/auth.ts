@@ -51,7 +51,6 @@ export const register = async (
 ): Promise<{ accessToken: string; user: any }> => {
   const { name, email, password } = payload;
 
-  // Проверка существующего пользователя
   const existingUser = await prisma.user.findUnique({ where: { email } });
   if (existingUser) {
     throw createHttpError(409, 'User already exists');
@@ -60,7 +59,6 @@ export const register = async (
   // Хэшируем пароль
   const hashedPassword = await bcrypt.hash(password, 10);
 
-  // Создаем нового пользователя
   const user = await prisma.user.create({
     data: {
       name: name || 'User',
@@ -70,17 +68,10 @@ export const register = async (
     },
   });
 
-  // Генерация токенов
-  const accessToken = generateAccessToken(user.id);
-  const refreshToken = randomBytes(40).toString('hex');
-  const refreshTokenValidUntil = new Date(Date.now() + ONE_DAY);
+  // Генерация токена активации
+  const activationToken = generateActivationToken(user.id, user.email);
 
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { refreshToken, refreshTokenValidUntil },
-  });
-
-  // Отправка письма с подтверждением (можно тоже вынести в отдельную утилиту)
+  // шаблон письма
   const confirmEmailTemplatePath = path.join(
     TEMPLATES_DIR,
     'confirm-email.html',
@@ -91,11 +82,10 @@ export const register = async (
   const template = handlebars.compile(templateSource);
 
   const html = template({
-    link: `${env(
-      'FRONTEND_DOMAIN',
-    )}/confirm-email?token=${generateActivationToken(user.id, user.email)}`,
+    link: `${env('FRONTEND_DOMAIN')}/confirm-email?token=${activationToken}`,
   });
 
+  // письмо
   try {
     await sendEmail({
       from: `VideoPlayer <${env('SMTP_FROM')}>`,
@@ -103,10 +93,12 @@ export const register = async (
       subject: 'Confirm your email',
       html,
     });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
     throw createHttpError(500, message || 'Email sending failed');
   }
+
+  const accessToken = generateAccessToken(user.id);
 
   return { accessToken, user };
 };
@@ -127,11 +119,12 @@ export const confirmEmail = async ({
       where: { id: Number(decoded.sub) },
     });
     if (!user) throw createHttpError(404, 'User not found');
-    if (user.isActive) throw createHttpError(400, 'Account already activated');
+    if (user.emailConfirmed)
+      throw createHttpError(400, 'Account already activated');
 
     await prisma.user.update({
       where: { id: user.id },
-      data: { isActive: true },
+      data: { emailConfirmed: true },
     });
 
     await prisma.session.deleteMany({ where: { userId: user.id } });

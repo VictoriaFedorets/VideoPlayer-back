@@ -39,6 +39,22 @@ export const registerAuthController = async (
   }
 };
 
+// Подтверждение email
+export const confirmEmailAuthController = async (
+  req: Request<{}, {}, ConfirmEmailAuthDTO>,
+  res: Response,
+) => {
+  try {
+    const session = await authService.confirmEmail(req.body);
+    res.json(session);
+  } catch (err: any) {
+    console.error('CONFIRM EMAIL ERROR:', err.stack || err);
+    res
+      .status(err.status || 500)
+      .json({ message: err.message || 'Server error' });
+  }
+};
+
 // Логин
 export const loginAuthController = async (
   req: Request<{}, {}, LoginAuthDTO>,
@@ -199,43 +215,6 @@ export const refreshSessionAuthController = async (
   } catch (err) {
     console.error(err);
     res.status(401).json({ message: (err as Error).message });
-  }
-};
-
-// Подтверждение email
-export const confirmEmailAuthController = async (
-  req: Request<{}, {}, ConfirmEmailAuthDTO>,
-  res: Response,
-): Promise<void> => {
-  try {
-    const { token } = req.body;
-
-    if (!token) {
-      res.status(400).json({ message: 'Token is required' });
-      return;
-    }
-
-    const user = await prisma.user.findFirst({
-      where: { emailConfirmationToken: { equals: token } },
-    });
-
-    if (!user) {
-      res.status(400).json({ message: 'Invalid token' });
-      return;
-    }
-
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        emailConfirmed: true,
-        emailConfirmationToken: null,
-      },
-    });
-
-    res.json({ message: 'Email confirmed' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Server error' });
   }
 };
 
